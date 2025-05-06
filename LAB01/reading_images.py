@@ -1,6 +1,7 @@
 import cv2
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 
 images = ['mandrill.jpg', 
           'figuraV2.jpg', 
@@ -27,7 +28,13 @@ def get_histogram(image):
         return hists, range(256)
 
 def get_histogram_bw_images(image):
-    hist = cv2.calcHist([image], [0], None, [256], [0, 256])
+    hist = [0] * 256
+    h, w = image.shape
+    for i in range(h):
+        for j in range(w):
+            pixel_value = image[i, j]
+            hist[pixel_value] += 1
+    hist = np.array(hist)
     hist = hist.reshape(-1)
     return hist, range(256)
 
@@ -42,8 +49,11 @@ def equalize_histogram(image):
         
     hist, _ = get_histogram_bw_images(image)
         
-    cdf = hist.cumsum()
-        
+    cdf = np.zeros_like(hist)
+    cdf[0] = hist[0]
+    for i in range(1, len(hist)):
+        cdf[i] = cdf[i-1] + hist[i]
+
     cdf_normalized = ((cdf - cdf.min()) * 255) / (cdf.max() - cdf.min() + 1e-8)
         
     height, width = image.shape
