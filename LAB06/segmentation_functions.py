@@ -268,110 +268,7 @@ def canny_edge_detection(image_path, low_threshold=100, high_threshold=200,
     
     return edge_result
 
-def otsu_adaptive_thresholding(img_path, window_size):
-    """
-    Perform Otsu's adaptive thresholding on the input image.
-    
-    Parameters:
-    - img_path: Path to the input image.
-    - window_size: Size of the local window for adaptive thresholding.
-    
-    Returns:
-    - thresholded_img: The image after applying Otsu's adaptive thresholding.
-    """
-    try:
-        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-        if img is None:
-
-            return None
-        
-        # Step 1: Apply Gaussian Blur to reduce noise
-        blurred_img = cv2.GaussianBlur(img, (5, 5), 1)
-        
-        # Step 2: Apply adaptive thresholding
-        rows, cols = blurred_img.shape
-        thresholded_img = np.zeros_like(blurred_img, dtype=np.uint8)
-        
-        half_window = window_size // 2
-        
-        for i in range(rows):
-            for j in range(cols):
-            # Define the local window boundaries
-                r_min = max(0, i - half_window)
-                r_max = min(rows, i + half_window + 1)
-                c_min = max(0, j - half_window)
-                c_max = min(cols, j + half_window + 1)
-                
-                # Extract the local window
-                local_window = blurred_img[r_min:r_max, c_min:c_max]
-                
-                # Compute Otsu's threshold for the local window
-                hist = cv2.calcHist([local_window], [0], None, [256], [0, 256])
-                hist = hist.ravel() / hist.sum()
-                cdf = hist.cumsum()
-                mean_level = np.arange(256)
-                sigma_b_squared = (cdf[-1] * (mean_level * cdf).cumsum() - (mean_level * cdf) ** 2) / (cdf[-1] ** 2)
-                optimal_threshold = np.argmax(sigma_b_squared)
-                
-                # Apply the threshold to the current pixel
-                if blurred_img[i, j] > optimal_threshold:
-                    thresholded_img[i, j] = 255
-                else:
-                    thresholded_img[i, j] = 0
-        return thresholded_img
-    except Exception as e:
-        return None
-
-def otsu_thresholding(img_path):
-    """
-    Perform Otsu's thresholding on the input image.
-    
-    Parameters:
-    - img_path: Path to the input image.
-    
-    Returns:
-    - thresholded_img: The image after applying Otsu's thresholding.
-    """
-    try:
-        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
-        if img is None:
-
-            return None
-        
-        # Step 1: Calculate histogram
-        hist = cv2.calcHist([img], [0], None, [256], [0, 256])
-        
-        # Step 2: Normalize histogram
-        hist = hist.ravel() / hist.sum()
-        
-        # Step 3: Calculate cumulative distribution function (CDF)
-        cdf = hist.cumsum()
-        
-        # Step 4: Calculate mean level
-        mean_level = np.arange(256)
-        
-        # Step 5: Calculate between-class variance
-        sigma_b_squared = (cdf[-1] * (mean_level * cdf).cumsum() - (mean_level * cdf) ** 2) / (cdf[-1] ** 2)
-        
-        # Step 6: Find the threshold that maximizes the between-class variance
-        optimal_threshold = np.argmax(sigma_b_squared)
-        optimal_threshold = int(optimal_threshold)
-        
-        # Step 7: Apply the threshold to create a binary image
-        thresholded_img = np.zeros_like(img, dtype=np.uint8)
-        rows, cols = img.shape
-        for i in range(rows):
-            for j in range(cols):
-                if img[i, j] > optimal_threshold:
-                    thresholded_img[i, j] = 255
-                else:
-                    thresholded_img[i, j] = 0
-        
-        return thresholded_img
-    except Exception as e:
-        return None
-    
-def otsu_cv2(img_path):
+def otsu_simple_cv2(img_path):
     """
     Perform Otsu's thresholding using OpenCV.
     
@@ -393,3 +290,56 @@ def otsu_cv2(img_path):
         return thresholded_img
     except Exception as e:
         return None
+
+def otsu_manual(region):
+    # Flatten and compute histogram
+    hist = np.bincount(region.ravel(), minlength=256)
+    total = region.size
+
+    sum_total = np.dot(np.arange(256), hist)
+    sum_b, w_b, w_f, var_max, threshold = 0.0, 0, 0, 0.0, 0
+
+    for t in range(256):
+        w_b += hist[t]
+        if w_b == 0:
+            continue
+        w_f = total - w_b
+        if w_f == 0:
+            break
+
+        sum_b += t * hist[t]
+        m_b = sum_b / w_b
+        m_f = (sum_total - sum_b) / w_f
+
+        var_between = w_b * w_f * (m_b - m_f) ** 2
+        if var_between > var_max:
+            var_max = var_between
+            threshold = t
+
+    return threshold
+
+def otsu_adaptive_manual(img_path, window_size):
+    """
+    Apply adaptive Otsu thresholding manually on an image (grayscale).
+    - img_path: path to image
+    - window_size: size of the square window (must be odd)
+    """
+    img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise ValueError("Couldn't load image")
+
+    height, width = img.shape
+    pad = window_size // 2
+    padded_img = cv2.copyMakeBorder(img, pad, pad, pad, pad, cv2.BORDER_REFLECT)
+    result = np.zeros_like(img)
+
+    for y in range(height):
+        for x in range(width):
+            y1, y2 = y, y + window_size
+            x1, x2 = x, x + window_size
+            window = padded_img[y1:y2, x1:x2]
+            threshold = otsu_manual(window)
+            result[y, x] = 255 if img[y, x] > threshold else 0
+
+    return result
+
